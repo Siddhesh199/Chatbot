@@ -2,6 +2,7 @@
 const dialogflow = require('dialogflow');
 const structjson = require('./structjson.js');
 const config = require('../config/keys');
+const mongoose = require('mongoose');
 
 const projectId = config.googleProjectID;
 const sessionId = config.dialogFlowSessionID;
@@ -16,9 +17,12 @@ const credentials = {
 const sessionClient = new dialogflow.SessionsClient({projectId, credentials});
 const sessionPath = sessionClient.sessionPath(projectId, sessionId);
 
+const Registration = mongoose.model('registration');
+
 
 module.exports = {
-    textQuery: async function(text, parameters = {}) {
+    textQuery: async function(text, userID, parameters = {}) {
+        let sessionPath = sessionClient.sessionPath(projectId, sessionId + userID);
         let self = module.exports;
         const request = {
             session: sessionPath,
@@ -36,15 +40,16 @@ module.exports = {
         };
 
         let responses = await sessionClient.detectIntent(request);
-        responses = await self.handleAction(responses);
+        responses = self.handleAction(responses);
         return responses;
 
 
 
     },
 
-    eventQuery: async function(event, parameters = {}) {
+    eventQuery: async function(event, userID, parameters = {}) {
         let self = module.exports;
+        let sessionPath = sessionClient.sessionPath(projectId, sessionId + userID);
         const request = {
             session: sessionPath,
             queryInput: {
@@ -64,8 +69,39 @@ module.exports = {
 
 
     handleAction: function(responses){
+        let self = module.exports;
+        let queryResult = responses[0].queryResult;
+        console.log(responses + '1');
+
+        switch (queryResult.action) {
+            case 'yes':
+                if (queryResult.allRequiredParamsPresent) {
+                    self.saveRegistration(queryResult.parameters.fields);
+                }
+                break;
+        }
+
+        // console.log(queryResult.action);
+        // console.log(queryResult.allRequiredParamsPresent);
+        // console.log(queryResult.fulfillmentMessages);
+        // console.log(queryResult.parameters.fields);
+
         return responses;
     },
-
-
+    
+    saveRegistration: async function(fields){
+        const registration = new Registration({
+            name: fields.name.stringValue,
+            address: fields.address.stringValue,
+            phone: fields.phone.stringValue,
+            email: fields.email.stringValue,
+            registeredOn: Date.now()
+        });
+        try{
+            let reg = await registration.save();
+            console.log(reg);
+        } catch (err){
+            console.log(err);
+        }
+    }
 }
